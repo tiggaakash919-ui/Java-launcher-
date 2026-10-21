@@ -248,7 +248,8 @@ jobs:
           class GameRepository(private val context: Context) {
               suspend fun discoverGames(): List<AppInfo> = withContext(Dispatchers.IO) {
                   val pm = context.packageManager
-                  val byCategory = pm.queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_GAME), PackageManager.MATCH_ALL).mapNotNull { it.activityInfo?.packageName }.toSet()
+                  // FIX 1: Using literal string for CATEGORY_GAME
+                  val byCategory = pm.queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory("android.intent.category.GAME"), PackageManager.MATCH_ALL).mapNotNull { it.activityInfo?.packageName }.toSet()
                   val byMeta = mutableSetOf<String>()
                   for (app in pm.getInstalledApplications(PackageManager.GET_META_DATA)) {
                       if (app.metaData?.getString("android.app.category") == "game") byMeta += app.packageName
@@ -431,7 +432,7 @@ jobs:
 
           cat << 'EOF' > app/src/main/java/com/nexus/launcher/ui/components/AppIcon.kt
           package com.nexus.launcher.ui.components
-          import android.graphics.*
+          import android.graphics.Bitmap
           import android.graphics.drawable.Drawable
           import androidx.compose.foundation.Image
           import androidx.compose.foundation.layout.*
@@ -441,12 +442,17 @@ jobs:
           import androidx.compose.ui.Alignment
           import androidx.compose.ui.Modifier
           import androidx.compose.ui.draw.clip
-          import androidx.compose.ui.graphics.*
+          import androidx.compose.ui.graphics.ImageBitmap
+          import androidx.compose.ui.graphics.asImageBitmap
           import androidx.compose.ui.layout.ContentScale
           import androidx.compose.ui.text.style.TextOverflow
           import androidx.compose.ui.unit.dp
           private fun Drawable.toImageBitmap(sizePx: Int = 144): ImageBitmap {
-              val bmp = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888); setBounds(0, 0, sizePx, sizePx); draw(Canvas(bmp)); return bmp.asImageBitmap()
+              val bmp = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
+              setBounds(0, 0, sizePx, sizePx)
+              // FIX 2: Fully qualified Android Canvas to avoid Compose Canvas conflict
+              draw(android.graphics.Canvas(bmp))
+              return bmp.asImageBitmap()
           }
           @Composable fun AppIcon(label: String, drawable: Drawable, modifier: Modifier = Modifier, showLabel: Boolean = true) {
               val bmp = remember(drawable) { drawable.toImageBitmap() }
