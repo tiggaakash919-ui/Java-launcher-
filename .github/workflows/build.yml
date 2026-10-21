@@ -1,4 +1,4 @@
-name: Build Minecraft Launcher
+name: Build NEXUS Minecraft Launcher
 
 on:
   push:
@@ -9,11 +9,12 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Cubiq-Launcher
+      - name: Checkout ZalithLauncher2
         uses: actions/checkout@v4
         with:
-          repository: VivxKumar07/Cubiq-Launcher
-          path: cubiq
+          repository: ZalithLauncher/ZalithLauncher2
+          path: zalith
+          submodules: recursive
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -21,16 +22,86 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Set up Android SDK
+      - name: Set up Android SDK & NDK
         uses: android-actions/setup-android@v3
         with:
           packages: ''
 
       - name: Install SDK packages
-        run: sdkmanager --install "platforms;android-34" "build-tools;34.0.0" "platform-tools" "ndk;25.2.9519653" "cmake;3.22.1"
+        run: sdkmanager --install "platforms;android-34" "build-tools;34.0.0" "platform-tools" "ndk;26.1.10909125" "cmake;3.22.1"
+
+      - name: Inject NEXUS AI Optimization Module
+        working-directory: zalith
+        run: |
+          # 1. App ka naam badlo
+          find . -name "strings.xml" -exec sed -i 's/<string name="app_name">.*<\/string>/<string name="app_name">NEXUS Minecraft<\/string>/g' {} +
+          
+          # 2. Package name badlo (taaki original se clash na ho)
+          grep -rl "org.zalithlauncher" . | xargs sed -i 's/org.zalithlauncher/com.nexus.minecraft/g' || true
+          
+          # 3. NEXUS Auto-Config Engine ki file banao
+          mkdir -p app/src/main/java/com/nexus/minecraft/optimization
+          
+          cat << 'EOF' > app/src/main/java/com/nexus/minecraft/optimization/DeviceProfile.kt
+          package com.nexus.minecraft.optimization
+          
+          import android.os.Build
+          import android.app.ActivityManager
+          import android.content.Context
+          
+          data class NexusProfile(
+              val renderer: String,
+              val resolutionScale: Int,
+              val renderDistance: Int,
+              val ramAllocationMB: Int,
+              val jvmArgs: String
+          )
+          
+          object DeviceProfile {
+              fun detectAndOptimize(context: Context): NexusProfile {
+                  val model = Build.MODEL.lowercase()
+                  val soc = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) Build.SOC_MODEL.lowercase() else ""
+                  
+                  // Moto G45 5G (Snapdragon 6s Gen 3, Adreno 619)
+                  if (model.contains("moto g45") || soc.contains("snapdragon 6s")) {
+                      return NexusProfile(
+                          renderer = "MobileGlues",
+                          resolutionScale = 75,
+                          renderDistance = 6,
+                          ramAllocationMB = 2048,
+                          jvmArgs = "-Xms1024M -Xmx2048M -XX:+UseG1GC -XX:+DisableExplicitGC"
+                      )
+                  }
+                  
+                  // Low-end devices (4GB RAM)
+                  val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+                  val memInfo = ActivityManager.MemoryInfo()
+                  am.getMemoryInfo(memInfo)
+                  val totalRamGB = memInfo.totalMem / (1024 * 1024 * 1024)
+                  
+                  return if (totalRamGB <= 4) {
+                      NexusProfile(
+                          renderer = "Holy GL4ES",
+                          resolutionScale = 70,
+                          renderDistance = 4,
+                          ramAllocationMB = 1536,
+                          jvmArgs = "-Xms512M -Xmx1536M -XX:+UseG1GC"
+                      )
+                  } else {
+                      NexusProfile(
+                          renderer = "MobileGlues",
+                          resolutionScale = 80,
+                          renderDistance = 8,
+                          ramAllocationMB = 3072,
+                          jvmArgs = "-Xms1024M -Xmx3072M -XX:+UseG1GC"
+                      )
+                  }
+              }
+          }
+          EOF
 
       - name: Build APK
-        working-directory: cubiq
+        working-directory: zalith
         run: |
           chmod +x gradlew
           ./gradlew assembleDebug
@@ -38,7 +109,6 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: cubiq-minecraft-debug
-          # Yahan humne double star (**) lagaya hai taaki yeh saari folders mein APK dhoondh le
-          path: cubiq/**/build/outputs/apk/debug/*.apk
+          name: nexus-minecraft-debug
+          path: zalith/**/build/outputs/apk/debug/*.apk
           if-no-files-found: error
