@@ -39,5 +39,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: cubiq-minecraft-debug
-          path: cubiq/app/build/outputs/apk/debug/*.apk
-          if-no-files-found: warn
+          # Yahan humne double star (**) lagaya hai taaki yeh saari folders mein APK dhoondh le
+          path: cubiq/**/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
