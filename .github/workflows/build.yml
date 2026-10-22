@@ -1,4 +1,4 @@
-name: Build NEXUS Minecraft Launcher
+name: Build NEXUS Minecraft with Game Booster
 
 on:
   push:
@@ -28,77 +28,141 @@ jobs:
           packages: ''
 
       - name: Install SDK packages
-        run: sdkmanager --install "platforms;android-34" "build-tools;34.0.0" "platform-tools" "ndk;26.1.10909125" "cmake;3.22.1"
+        run: sdkmanager --install "platforms;android-35" "build-tools;35.0.0" "platform-tools" "ndk;27.0.12077973" "cmake;3.22.1"
 
-      - name: Inject NEXUS AI Optimization Module
+      - name: Inject NEXUS Game Booster Engine
         working-directory: zalith
         run: |
-          # 1. App ka naam badlo
+          # 1. App ka naam NEXUS Minecraft karo
           find . -name "strings.xml" -exec sed -i 's/<string name="app_name">.*<\/string>/<string name="app_name">NEXUS Minecraft<\/string>/g' {} +
           
-          # 2. Package name badlo (taaki original se clash na ho)
+          # 2. Package name change karo (taaki original se clash na ho)
           grep -rl "org.zalithlauncher" . | xargs sed -i 's/org.zalithlauncher/com.nexus.minecraft/g' || true
-          
-          # 3. NEXUS Auto-Config Engine ki file banao
-          mkdir -p app/src/main/java/com/nexus/minecraft/optimization
-          
-          cat << 'EOF' > app/src/main/java/com/nexus/minecraft/optimization/DeviceProfile.kt
-          package com.nexus.minecraft.optimization
-          
-          import android.os.Build
+
+          # 3. Game Booster module ke liye folder banao
+          mkdir -p app/src/main/java/com/nexus/minecraft/booster
+          mkdir -p app/src/main/assets/nexus_booster
+
+          # 4. Device Profile (Moto G45 5G + Fallback)
+          cat << 'EOF' > app/src/main/java/com/nexus/minecraft/booster/NexusGameBooster.kt
+          package com.nexus.minecraft.booster
+
           import android.app.ActivityManager
           import android.content.Context
-          
-          data class NexusProfile(
+          import android.os.Build
+
+          data class NexusOptimizationProfile(
               val renderer: String,
               val resolutionScale: Int,
               val renderDistance: Int,
               val ramAllocationMB: Int,
-              val jvmArgs: String
+              val jvmArgs: String,
+              val enableSodium: Boolean,
+              val enableLithium: Boolean,
+              val enableFerriteCore: Boolean,
+              val enableKrypton: Boolean
           )
-          
-          object DeviceProfile {
-              fun detectAndOptimize(context: Context): NexusProfile {
+
+          object NexusGameBooster {
+
+              fun detectAndOptimize(context: Context): NexusOptimizationProfile {
                   val model = Build.MODEL.lowercase()
                   val soc = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) Build.SOC_MODEL.lowercase() else ""
-                  
+
                   // Moto G45 5G (Snapdragon 6s Gen 3, Adreno 619)
                   if (model.contains("moto g45") || soc.contains("snapdragon 6s")) {
-                      return NexusProfile(
+                      return NexusOptimizationProfile(
                           renderer = "MobileGlues",
                           resolutionScale = 75,
                           renderDistance = 6,
                           ramAllocationMB = 2048,
-                          jvmArgs = "-Xms1024M -Xmx2048M -XX:+UseG1GC -XX:+DisableExplicitGC"
+                          jvmArgs = "-Xms1024M -Xmx2048M -XX:+UseG1GC -XX:+DisableExplicitGC -XX:+UseStringDeduplication",
+                          enableSodium = true,
+                          enableLithium = true,
+                          enableFerriteCore = true,
+                          enableKrypton = true
                       )
                   }
-                  
-                  // Low-end devices (4GB RAM)
+
+                  // Fallback: RAM ke hisaab se
                   val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
                   val memInfo = ActivityManager.MemoryInfo()
                   am.getMemoryInfo(memInfo)
                   val totalRamGB = memInfo.totalMem / (1024 * 1024 * 1024)
-                  
+
                   return if (totalRamGB <= 4) {
-                      NexusProfile(
+                      NexusOptimizationProfile(
                           renderer = "Holy GL4ES",
                           resolutionScale = 70,
                           renderDistance = 4,
                           ramAllocationMB = 1536,
-                          jvmArgs = "-Xms512M -Xmx1536M -XX:+UseG1GC"
+                          jvmArgs = "-Xms512M -Xmx1536M -XX:+UseG1GC",
+                          enableSodium = true,
+                          enableLithium = true,
+                          enableFerriteCore = true,
+                          enableKrypton = false
                       )
                   } else {
-                      NexusProfile(
+                      NexusOptimizationProfile(
                           renderer = "MobileGlues",
                           resolutionScale = 80,
                           renderDistance = 8,
                           ramAllocationMB = 3072,
-                          jvmArgs = "-Xms1024M -Xmx3072M -XX:+UseG1GC"
+                          jvmArgs = "-Xms1024M -Xmx3072M -XX:+UseG1GC",
+                          enableSodium = true,
+                          enableLithium = true,
+                          enableFerriteCore = true,
+                          enableKrypton = true
                       )
                   }
               }
           }
           EOF
+
+          # 5. Default Booster Config (JSON)
+          cat << 'EOF' > app/src/main/assets/nexus_booster/booster_config.json
+          {
+            "booster_version": "1.0.0",
+            "device_target": "Moto G45 5G",
+            "renderer": "MobileGlues",
+            "resolution_scale": 75,
+            "render_distance": 6,
+            "ram_allocation_mb": 2048,
+            "jvm_args": "-Xms1024M -Xmx2048M -XX:+UseG1GC -XX:+DisableExplicitGC -XX:+UseStringDeduplication",
+            "mods": {
+              "sodium": true,
+              "lithium": true,
+              "ferritecore": true,
+              "krypton": true,
+              "immediatelyfast": true,
+              "memoryleakfix": true
+            }
+          }
+          EOF
+
+      - name: Download Performance Mods (Sodium, Lithium, FerriteCore, Krypton)
+        working-directory: zalith
+        run: |
+          mkdir -p app/src/main/assets/nexus_booster/mods
+          
+          # Modrinth API se Fabric 1.21 ke liye latest versions download karo
+          # Sodium (rendering engine)
+          curl -L -o app/src/main/assets/nexus_booster/mods/sodium.jar "https://cdn.modrinth.com/data/AANobbMI/versions/wYtW5vVd/sodium-fabric-0.6.9+mc1.21.1.jar" || true
+          
+          # Lithium (game logic)
+          curl -L -o app/src/main/assets/nexus_booster/mods/lithium.jar "https://cdn.modrinth.com/data/gvQqBUqZ/versions/ahZ3aX5M/lithium-fabric-0.14.3+mc1.21.1.jar" || true
+          
+          # FerriteCore (RAM reduction)
+          curl -L -o app/src/main/assets/nexus_booster/mods/ferritecore.jar "https://cdn.modrinth.com/data/uXXizFIs/versions/6.0.1/ferritecore-6.0.1-fabric.jar" || true
+          
+          # Krypton (network optimization)
+          curl -L -o app/src/main/assets/nexus_booster/mods/krypton.jar "https://cdn.modrinth.com/data/fQEb0iXm/versions/0.2.8/krypton-0.2.8.jar" || true
+          
+          # ImmediatelyFast (rendering)
+          curl -L -o app/src/main/assets/nexus_booster/mods/immediatelyfast.jar "https://cdn.modrinth.com/data/5ZwdcRci/versions/1.3.3/immediatelyfast-1.3.3+1.21.1.jar" || true
+          
+          echo "Mods downloaded:"
+          ls -la app/src/main/assets/nexus_booster/mods/
 
       - name: Build APK
         working-directory: zalith
@@ -109,6 +173,6 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: nexus-minecraft-debug
+          name: nexus-minecraft-game-booster
           path: zalith/**/build/outputs/apk/debug/*.apk
           if-no-files-found: error
